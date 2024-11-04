@@ -1,0 +1,32 @@
+name: Code Freeze
+
+on:
+  workflow_dispatch:
+    inputs:
+      code_freeze:
+        description: Code Freeze Status
+        type: choice
+        options:
+          - active
+          - inactive
+        default: active
+        required: true
+
+jobs:
+  code_freeze_job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - uses: hashicorp/setup-terraform@v3
+
+
+      - name: Code Freeze
+        working-directory: ./infrastructure
+        env:
+          TF_VAR_code_freeze_status: ${{ inputs.code_freeze }}
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          terraform init -upgrade
+          terraform apply -auto-approve
