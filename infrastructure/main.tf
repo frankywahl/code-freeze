@@ -2,7 +2,7 @@ terraform {
   required_providers {
     github = {
       source = "integrations/github"
-      version = "6.3.1"
+      version = "~> 6.3.1"
     }
   }
 }
@@ -18,9 +18,14 @@ variable "code_freeze_status" {
   }
 }
 
+variable "github_repository" { 
+  type = string
+  description = "Name of the repositority, example frankywahl/tmp"
+}
+
 resource "github_repository_ruleset" "this" {
   name       = "Code Freeze"
-  repository = "tmp"
+  repository = split("/", var.github_repository)[1]
 
   target      = "branch"
   enforcement = var.code_freeze_status == "active" ? "active" : "disabled"
@@ -34,23 +39,14 @@ resource "github_repository_ruleset" "this" {
     }
   }
 
-
   rules {
     creation                      = false
     deletion                      = false
     non_fast_forward              = true
     required_linear_history       = false
     required_signatures           = false
-    update                        = false
+    update                        = var.code_freeze_status == "active" ? true : false
     update_allows_fetch_and_merge = false
-
-    pull_request {
-      dismiss_stale_reviews_on_push     = false
-      require_code_owner_review         = false
-      require_last_push_approval        = false
-      required_approving_review_count   = 10
-      required_review_thread_resolution = false
-    }
   }
 }
 
