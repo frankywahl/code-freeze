@@ -38,6 +38,7 @@ jobs:
           GITHUB_RULE_ID: ${{ vars.CODE_FREEZE_RULESET_ID }}
         run: |
           curl \
+            -f \
             -X PUT \
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${{ secrets.GH_TOKEN }}" \
