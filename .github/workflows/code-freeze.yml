@@ -35,7 +35,7 @@ jobs:
 
       - name: Code Freeze
         env:
-          GITHUB_RULE_ID: 2493528 # The ID of the ruleset. This needs to be changed.
+          GITHUB_RULE_ID: ${{ vars.CODE_FREEZE_RULESET_ID }}
         run: |
           curl \
             -X PUT \
