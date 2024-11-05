@@ -19,7 +19,6 @@ on:
           - active
           - inactive
         default: active
-   
         required: true
 
 jobs:
