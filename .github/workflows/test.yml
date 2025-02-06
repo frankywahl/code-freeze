@@ -5,7 +5,7 @@ on:
     inputs:
       hash-files:
         type: string
-        required: treu
+        required: true
         description: "Hash files"
         default: "package-lock.json"
 
@@ -28,6 +28,7 @@ jobs:
           path: ${{ runner.temp }}/.buildx-cache
           key: ${{ runner.os }}-buildx-${{ hashFiles(inputs.hash-files) }}
           restore-keys: |
+            ${{ runner.os }}-buildx
 
       - name: Build and Tag Container Image
         uses: docker/build-push-action@v6
