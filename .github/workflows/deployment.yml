@@ -42,87 +42,10 @@ jobs:
   deploy:
     needs:
       - prepare
-    uses: onrunning/k8s-manifests/.github/workflows/deploymentv8.yml@master
-    with:
-      environment: ${{ inputs.environment }}
-      app: on-shop
-      image-tag: ${{ inputs.tag }}
-    secrets: inherit
-
-  post-deployment:
-    needs:
-      - deploy
-    runs-on: ubuntu-latest
     steps:
-      - name: Restart production pods
+      - name: "Deploy"
         run: |
-          echo ${{ secrets.K8S_DTC_PROD_KUBECONFIG }} | base64 -d > .kubeconfig
-          for name in on-contentful-subgraph on-api-router; do
-            kubectl rollout restart deployment ${name} --kubeconfig .kubeconfig --context restart-deployments
-            kubectl rollout status deployment ${name} -w --kubeconfig .kubeconfig --context restart-deployments
-          done
-          rm -f .kubeconfig
-
-      - name: Set SLACK_CHANNEL environment variable
-        run: |
-          echo "SLACK_CHANNEL=$(echo '${{ env.CONFIG }}' | jq -r '."${{ inputs.environment }}".slack_channel')"  >> $GITHUB_ENV
-
-      - name: Send message to Slack
-        id: slack
-        uses: slackapi/slack-github-action@v2.0.0
-        env:
-          SLACK_CHANNEL: ${{ env.SLACK_CHANNEL }}
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN_DEPLOY_FROM_GHA }}
-        with:
-          payload-templated: true
-          payload: |
-            "channel": ${{ env.SLACK_CHANNEL }}
-            "blocks": [
-              {
-                "type": "header",
-                "text": {
-                  "type": "plain_text",
-                  "text": "Deployment for ${{ env.APP }} :rocket:",
-                  "emoji": true
-                }
-              },
-              {
-                "type": "divider"
-              },
-              {
-                "type": "section",
-                "text": {
-                  "type": "mrkdwn",
-                  "text": "Version: <${{ github.event.repository.html_url }}/commit/${{ github.event.inputs.tag }}|${{ github.event.inputs.tag }}>\nMessage: ${{ github.event.head_commit.message }}"
-                }
-              },
-              {
-                "type": "section",
-                "fields": [
-                  {
-                    "type": "mrkdwn",
-                    "text": "Committed by *${{ github.actor }}*"
-                  },
-                  {
-                    "type": "mrkdwn",
-                    "text": "Target environment: *${{ inputs.environment }}*"
-                  }
-                ]
-              },
-              {
-                "type": "divider"
-              },
-              {
-                "type": "context",
-                "elements": [
-                  {
-                    "type": "plain_text",
-                    "text": "Triggered by: ${{ github.event.sender.login }}",
-                    "emoji": true
-                  }
-                ]
-              }
-            ]
+          echo "Deployed"
 
   promote:
     runs-on: ubuntu-latest
