@@ -30,10 +30,29 @@ jobs:
         run: |
           echo "Deployed"
 
+  waitinactive:
+    name: Wait for inactive to be live
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: inputs.environment == 'production'
+    timeout-minutes: 15
+    steps:
+      - name: Wait for inactive to be live
+        run: |
+          while true; do
+            currentCommit=$(curl -s https://shop-inactive.on.com/health_check | jq -r .gitSha)
+            if [[ ${currentCommit} == "${{inputs.tag}}" ]]; then
+              break;
+            fi
+            echo "Current commit is ${currentCommit}"
+            sleep 5
+          done
+
+
   flip:
     name: Flip flag
     runs-on: ubuntu-latest
-    needs: deploy
+    needs: waitinactive
     environment: ${{ inputs.environment }}
     if: inputs.environment == 'production'
     steps:
