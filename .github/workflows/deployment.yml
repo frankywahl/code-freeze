@@ -43,7 +43,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: deploy
     environment: ${{ inputs.environment }}
-    if: ${{ inputs.environment }} == 'production'
+    if: '${{ inputs.environment }}' == 'production'
     steps:
       - name: Install plugin
         env:
