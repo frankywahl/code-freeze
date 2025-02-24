@@ -1,0 +1,208 @@
+name: Deployment
+run-name: Deploy to ${{ inputs.environment }}: ${{ inputs.tag }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to deploy'
+        required: true
+        type: string
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+        default: production
+
+env:
+  APP: on-shop
+  REGION: us-east-1
+  CONFIG: '{"production":{"slack_channel":"#ecom-deploys"},"staging":{"slack_channel":"#ecom-deploys-preprod"}}'
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.REGION }}
+
+      - name: Amazon ECR Login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Check if image exists
+        run: aws ecr describe-images --region ${{ env.REGION }} --repository-name ${{ env.APP }} --image-ids imageTag=${{ inputs.environment }}-${{ inputs.tag }}
+
+  deploy:
+    needs:
+      - prepare
+    uses: onrunning/k8s-manifests/.github/workflows/deploymentv8.yml@master
+    with:
+      environment: ${{ inputs.environment }}
+      app: on-shop
+      image-tag: ${{ inputs.tag }}
+    secrets: inherit
+
+  post-deployment:
+    needs:
+      - deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Restart production pods
+        run: |
+          echo ${{ secrets.K8S_DTC_PROD_KUBECONFIG }} | base64 -d > .kubeconfig
+          for name in on-contentful-subgraph on-api-router; do
+            kubectl rollout restart deployment ${name} --kubeconfig .kubeconfig --context restart-deployments
+            kubectl rollout status deployment ${name} -w --kubeconfig .kubeconfig --context restart-deployments
+          done
+          rm -f .kubeconfig
+
+      - name: Set SLACK_CHANNEL environment variable
+        run: |
+          echo "SLACK_CHANNEL=$(echo '${{ env.CONFIG }}' | jq -r '."${{ inputs.environment }}".slack_channel')"  >> $GITHUB_ENV
+
+      - name: Send message to Slack
+        id: slack
+        uses: slackapi/slack-github-action@v2.0.0
+        env:
+          SLACK_CHANNEL: ${{ env.SLACK_CHANNEL }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN_DEPLOY_FROM_GHA }}
+        with:
+          payload-templated: true
+          payload: |
+            "channel": ${{ env.SLACK_CHANNEL }}
+            "blocks": [
+              {
+                "type": "header",
+                "text": {
+                  "type": "plain_text",
+                  "text": "Deployment for ${{ env.APP }} :rocket:",
+                  "emoji": true
+                }
+              },
+              {
+                "type": "divider"
+              },
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "Version: <${{ github.event.repository.html_url }}/commit/${{ github.event.inputs.tag }}|${{ github.event.inputs.tag }}>\nMessage: ${{ github.event.head_commit.message }}"
+                }
+              },
+              {
+                "type": "section",
+                "fields": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "Committed by *${{ github.actor }}*"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "Target environment: *${{ inputs.environment }}*"
+                  }
+                ]
+              },
+              {
+                "type": "divider"
+              },
+              {
+                "type": "context",
+                "elements": [
+                  {
+                    "type": "plain_text",
+                    "text": "Triggered by: ${{ github.event.sender.login }}",
+                    "emoji": true
+                  }
+                ]
+              }
+            ]
+
+  promote:
+    runs-on: ubuntu-latest
+    needs: deploy
+    environment: ${{ inputs.environment }}
+    if: ${{ inputs.environment }} == 'production'
+    steps:
+      - name: Install plugin
+        env:
+          ARGO_ROLLOUTS_VERSION: 1.5.1
+        run: |
+          curl -LO https://github.com/argoproj/argo-rollouts/releases/download/v${ARGO_ROLLOUTS_VERSION}/kubectl-argo-rollouts-linux-amd64
+          chmod +x ./kubectl-argo-rollouts-linux-amd64
+          sudo mv ./kubectl-argo-rollouts-linux-amd64 /usr/local/bin/kubectl-argo-rollouts
+
+      - name: Promote blue/green deployment
+        run: |
+          echo ${{ secrets.K8S_DTC_PROD_KUBECONFIG }} | base64 -d > .kubeconfig
+          kubectl argo rollouts get ro on-shop --kubeconfig .kubeconfig --context promote-blue-green
+          kubectl argo rollouts promote on-shop --kubeconfig .kubeconfig --context promote-blue-green
+          kubectl argo rollouts get ro on-shop --kubeconfig .kubeconfig --context promote-blue-green
+          rm -f .kubeconfig
+
+      - name: Set SLACK_CHANNEL environment variable
+        run: |
+          echo "SLACK_CHANNEL=$(echo '${{ env.CONFIG }}' | jq -r '."${{ inputs.environment }}".slack_channel')"  >> $GITHUB_ENV
+
+      - name: Send message to Slack
+        id: slack
+        uses: slackapi/slack-github-action@v2.0.0
+        env:
+          SLACK_CHANNEL: ${{ env.SLACK_CHANNEL }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN_DEPLOY_FROM_GHA }}
+        with:
+          payload-templated: true
+          payload: |
+            "channel": ${{ env.SLACK_CHANNEL }}
+            "blocks": [
+              {
+                "type": "header",
+                "text": {
+                  "type": "plain_text",
+                  "text": "Flip for ${{ env.APP }} :rocket:",
+                  "emoji": true
+                }
+              },
+              {
+                "type": "divider"
+              },
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "Message: We're going live people!"
+                }
+              },
+              {
+                "type": "section",
+                "fields": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "Started by *${{ github.event.sender.login }}*"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "Target environment: *${{ inputs.environment }}*"
+                  }
+                ]
+              },
+              {
+                "type": "divider"
+              },
+              {
+                "type": "context",
+                "elements": [
+                  {
+                    "type": "plain_text",
+                    "text": "Triggered by: ${{ github.event.sender.login }}",
+                    "emoji": true
+                  }
+                ]
+              }
+            ]
