@@ -23,23 +23,15 @@ env:
   CONFIG: '{"production":{"slack_channel":"#ecom-deploys"},"staging":{"slack_channel":"#ecom-deploys-preprod"}}'
 
 jobs:
-  prepare:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Prepare
-        run: |
-          echo "Preparing"
-
   deploy:
     runs-on: ubuntu-latest
-    needs:
-      - prepare
     steps:
       - name: "Deploy"
         run: |
           echo "Deployed"
 
-  promote:
+  flip:
+    name: Flip flag
     runs-on: ubuntu-latest
     needs: deploy
     environment: ${{ inputs.environment }}
